@@ -1,0 +1,17 @@
+[package]
+name = "rust-camo"
+version = "0.0.1"
+
+authors = ["Roxas Shadow <webmaster@giovannicapuano.net>"]
+license = "WTFPL"
+
+description = "Camo. Rewritten in Rust."
+repository  = "https://github.com/RoxasShadow/rust-camo"
+keywords    = ["camo", "http proxy", "proxy", "ssl"]
+
+[lib]
+name = "camo"
+path = "src/lib.rs"
+
+[dependencies]
+hyper = "0.6"
