@@ -1,13 +1,32 @@
-#[derive(Debug, Clone)]
+use std::cell::RefCell;
+use std::sync::Mutex;
+
+use time::Tm;
+
+#[derive(Debug)]
 pub struct Status {
-  pub current_connections: u16,
-  pub total_connections:   u16,
-  pub started_at:          u16
+  pub current_connections: Mutex<RefCell<u16>>,
+  pub total_connections:   Mutex<RefCell<u16>>,
+  pub started_at:          Tm
 }
 
 impl Status {
-  pub fn to_string(&self) -> &[u8] {
-    return b"lolwut";
-    // "ok #{current_connections}/#{total_connections} since #{started_at.toString()}"
+  pub fn as_string(&self) -> String {
+    let current_connections = self.current_connections.lock().unwrap();
+    let total_connections   = self.total_connections.lock().unwrap();
+
+    return format!("{}/{} since {}",
+      *current_connections.borrow(),
+      *total_connections.borrow(),
+      self.started_at.asctime()
+    );
+  }
+
+  pub fn new_visitor(&self) {
+    let current_connections = self.current_connections.lock().unwrap();
+    *current_connections.borrow_mut() += 1;
+
+    let total_connections = self.total_connections.lock().unwrap();
+    *total_connections.borrow_mut() += 1;
   }
 }

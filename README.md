@@ -1,3 +1,3 @@
 rust-camo
 =========
-Camo. Rewritten in Rust.
+Camo. Rewritten in Rust. WIP.

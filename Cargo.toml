@@ -1,9 +1,9 @@
 [package]
-name = "rust-camo"
+name    = "rust-camo"
 version = "0.0.1"
 
 authors = ["Roxas Shadow <webmaster@giovannicapuano.net>"]
-license = "WTFPL"
+license = "MIT"
 
 description = "Camo. Rewritten in Rust."
 repository  = "https://github.com/RoxasShadow/rust-camo"
@@ -15,3 +15,5 @@ path = "src/lib.rs"
 
 [dependencies]
 hyper = "0.6"
+time  = "0.1"
+cookie  = "0.1"
