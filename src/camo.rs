@@ -56,31 +56,25 @@ impl Camo {
     Server::http(addr).unwrap().handle(camo).unwrap();
   }
 
+  fn clear_cookies(&self, headers: &mut Headers, cookies: Option<&Cookie>) {
+    match cookies {
+      Some(cookies) => {
+        for cookie in &mut cookies.iter() {
+          let mut cookie = CookiePair::new(cookie.name.clone(), "".to_owned());
+          cookie.expires = Some(time::empty_tm());
+          headers.set(SetCookie(vec![cookie]));
+        }
+      },
+
+      None => {}
+    }
+  }
+
   fn camo(&self, req: &Request, mut res: Response) {
-    // TODO: move to method clear_cookies()
     {
       let headers: &mut Headers    = res.headers_mut();
       let cookies: Option<&Cookie> = req.headers.get();
-
-      match cookies {
-        Some(cookies) => {
-          for cookie in &mut cookies.iter() {
-            let mut cookie = CookiePair::new(cookie.name.clone(), "LOL".to_owned());
-            cookie.expires = Some(time::empty_tm());
-            headers.set(SetCookie(vec![cookie]));
-          }
-        },
-
-        None => {}
-      }
-    }
-
-    {
-      let raw: Option<&Cookie> = req.headers.get();
-      match raw {
-        Some(raw) => { println!("{:?}", raw); },
-        None => {}
-      }
+      self.clear_cookies(headers, cookies);
     }
 
     self.status.new_visitor();
