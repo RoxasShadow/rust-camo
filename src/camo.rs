@@ -5,6 +5,8 @@ use std::net::{SocketAddrV4, Ipv4Addr};
 use std::cell::RefCell;
 use std::sync::Mutex;
 
+use rustc_serialize::hex::ToHex;
+use regex::Regex;
 use time;
 use hyper::Get;
 use hyper::header::{Headers, Cookie, SetCookie};
@@ -70,11 +72,52 @@ impl Camo {
     }
   }
 
+  fn hexdec(s: &str) -> Option<String> {
+    let length = s.len();
+
+    if length > 0 && length % 2 == 0 {
+      if !Regex::new(r"[^0-9a-f]").unwrap().is_match(s) {
+        let buf = s.chars()
+                 .collect::<Vec<char>>().iter()
+                 .map(|ref mut c| c.to_string().into_bytes().to_hex())
+                 .collect::<String>();
+        return Some(buf);
+
+        /*
+        let mut buf = String::new();
+
+        for i in (0..length).step_by(2) {
+          // TODO: use map http://hermanradtke.com/2015/05/29/creating-a-rust-function-that-returns-string-or-str.html
+          let a = s[i..i+1].to_string().into_bytes().to_hex();
+          buf.push_str(a.as_str());
+        }
+        */
+      }
+    }
+
+    return None;
+  }
+
   fn camo(&self, req: &Request, mut res: Response) {
     {
       let headers: &mut Headers    = res.headers_mut();
       let cookies: Option<&Cookie> = req.headers.get();
       self.clear_cookies(headers, cookies);
+    }
+
+    {
+      let url_pathname = format!("{}", req.uri);
+      let re           = Regex::new(r"^/").unwrap();
+      let query        = re.replace_all(&*url_pathname, "");
+
+      let (query_digest, encoded_url) = match query.split("/").collect::<Vec<&str>>().as_slice() {
+        [query_digest, encoded_url] => (query_digest, encoded_url),
+        _                           => ("", "")
+      };
+
+      /* TODO: We're supposing that the target url has already been encoded.
+        We have to support the plain URL inside the query string (when None?) */
+      println!("{:?} -> {:?}", encoded_url, Camo::hexdec(encoded_url));
     }
 
     self.status.new_visitor();
