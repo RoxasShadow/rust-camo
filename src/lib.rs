@@ -1,10 +1,12 @@
-#![feature(slice_patterns, convert, plugin)]
+#![feature(slice_patterns, plugin)]
 
+extern crate libc;
 extern crate regex;
 extern crate rustc_serialize;
 extern crate hyper;
 extern crate cookie;
 extern crate time;
+extern crate crypto;
 
 #[macro_use]
 pub mod macros;

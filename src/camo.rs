@@ -5,16 +5,20 @@ use std::net::{SocketAddrV4, Ipv4Addr};
 use std::cell::RefCell;
 use std::sync::Mutex;
 
-use rustc_serialize::hex::ToHex;
+use libc;
+use libc::pid_t;
+use rustc_serialize::hex::{ToHex, FromHex};
 use regex::Regex;
 use time;
-use hyper::Get;
+use hyper::{Url, Get};
 use hyper::header::{Headers, Cookie, SetCookie};
 use cookie::Cookie as CookiePair;
-use hyper::server::Handler;
-use hyper::server::{Request, Response};
-use hyper::server::Server;
+use hyper::server::{Handler, Server, Request, Response};
 use hyper::uri::RequestUri::AbsolutePath;
+use crypto::digest::Digest;
+use crypto::hmac::Hmac;
+use crypto::sha1::Sha1;
+use crypto::mac::Mac;
 
 pub struct Camo {
   config: Config,
@@ -39,6 +43,10 @@ impl Handler for Camo {
 }
 
 impl Camo {
+  pub fn pid() -> pid_t {
+    unsafe { libc::getpid() }
+  }
+
   pub fn serve(config: Config) {
     let ip   = Ipv4Addr::new(127, 0, 0, 1);
     let addr = SocketAddrV4::new(ip, config.port);
@@ -49,12 +57,14 @@ impl Camo {
       started_at:          time::now_utc()
     };
 
+    println!("SSL-Proxy running on {} with pid:{} version:{}",
+      config.port, Camo::pid(), config.version);
+
     let camo = Camo {
       config: config,
       status: status
     };
 
-    println!("Listening on {}", addr);
     Server::http(addr).unwrap().handle(camo).unwrap();
   }
 
@@ -72,30 +82,33 @@ impl Camo {
     }
   }
 
-  fn hexdec(s: &str) -> Option<String> {
+  pub fn hexdec(s: &str) -> Option<String> {
     let length = s.len();
 
     if length > 0 && length % 2 == 0 {
       if !Regex::new(r"[^0-9a-f]").unwrap().is_match(s) {
-        let buf = s.chars()
-                 .collect::<Vec<char>>().iter()
-                 .map(|ref mut c| c.to_string().into_bytes().to_hex())
-                 .collect::<String>();
-        return Some(buf);
-
-        /*
-        let mut buf = String::new();
-
-        for i in (0..length).step_by(2) {
-          // TODO: use map http://hermanradtke.com/2015/05/29/creating-a-rust-function-that-returns-string-or-str.html
-          let a = s[i..i+1].to_string().into_bytes().to_hex();
-          buf.push_str(a.as_str());
-        }
-        */
+        return match s.from_hex() {
+          Ok(val) => String::from_utf8(val).ok(),
+          Err(_)  => None,
+        };
       }
     }
 
     return None;
+  }
+
+  fn from_query_string(pairs: Vec<(String, String)>) -> Option<( String)> {
+    return Some(pairs[0].clone().1);
+  }
+
+  fn from_encoded_url<'a>(path: &'a [String]) -> Option<String> {
+    return if path.len() >= 3 {
+      let encoded_url = &*path[2];
+      Camo::hexdec(encoded_url)
+    }
+    else {
+      None
+    };
   }
 
   fn camo(&self, req: &Request, mut res: Response) {
@@ -106,27 +119,47 @@ impl Camo {
     }
 
     {
-      let url_pathname = format!("{}", req.uri);
-      let re           = Regex::new(r"^/").unwrap();
-      let query        = re.replace_all(&*url_pathname, "");
+      let url  = Url::parse(&*format!("http://127.0.0.1:{}/{}", self.config.port, req.uri)).unwrap();
+      let path = url.path().unwrap();
 
-      let (query_digest, encoded_url) = match query.split("/").collect::<Vec<&str>>().as_slice() {
-        [query_digest, encoded_url] => (query_digest, encoded_url),
-        _                           => ("", "")
+      let query_digest = path[1].clone();
+      let dest_url     = match url.query_pairs() {
+        Some(pairs) => Camo::from_query_string(pairs),
+        None        => Camo::from_encoded_url(path),
       };
 
-      /* TODO: We're supposing that the target url has already been encoded.
-        We have to support the plain URL inside the query string (when None?) */
-      println!("{:?} -> {:?}", encoded_url, Camo::hexdec(encoded_url));
+      // TODO: check headers here
+
+      /* sample urls:
+        http://localhost:3333/b9f45c9f94e3b15fecae2bf9a8b497fc7280fd29/?url=http://example.com/octocat.jpg
+        http://localhost:3333/b9f45c9f94e3b15fecae2bf9a8b497fc7280fd29/687474703a2f2f6578616d706c652e636f6d2f6f63746f6361742e6a7067
+      */
+      match dest_url {
+        Some(url) => {
+          let mut hmac = Hmac::new(Sha1::new(), self.config.shared_key.as_bytes());
+          hmac.input(url.as_bytes());
+
+          let hmac_digest = hmac.result().code().to_hex();
+
+          if hmac_digest == query_digest {
+            try_return!(res.send(b"yay"));
+          }
+          else {
+            let s = format!("checksum mismatch {}:{}", hmac_digest, query_digest);
+            try_return!(res.send(s.as_bytes()));
+          }
+        }
+        None => {
+          try_return!(res.send(b"No pathname provided on the server"));
+        }
+      }
     }
 
     self.status.new_visitor();
-
-    try_return!(res.send(b"ok"));
   }
 
   fn default_security_headers(&self, res: &mut Response) {
-    let headers : &mut Headers = res.headers_mut();
+    let headers: &mut Headers = res.headers_mut();
     headers.set_raw("X-Frame-Options", vec![b"deny".to_vec()]);
     headers.set_raw("X-XSS-Protection", vec![b"1; mode=block".to_vec()]);
     headers.set_raw("X-Content-Type-Options", vec![b"nosniff".to_vec()]);
