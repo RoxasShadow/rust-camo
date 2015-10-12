@@ -42,3 +42,15 @@ impl Utils {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use Utils;
+
+  #[test]
+  fn test_hexdec() {
+    assert_eq!(Utils::hexdec("687474703a2f2f6578616d706c652e636f6d2f6f63746f6361742e6a7067"), Some(String::from("http://example.com/octocat.jpg")));
+    assert_eq!(Utils::hexdec("lolwut"), None);
+    assert_eq!(Utils::hexdec(""), None);
+  }
+}

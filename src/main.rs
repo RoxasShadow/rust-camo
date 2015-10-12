@@ -12,5 +12,5 @@ fn main() {
     shared_key: String::from("0x24FEEDFACEDEADBEEFCAFE")
   };
 
-  Camo::serve(config);
+  Camo::serve(config).unwrap();
 }

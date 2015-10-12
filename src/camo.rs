@@ -10,7 +10,8 @@ use time;
 use rustc_serialize::hex::ToHex;
 use hyper::{Url, Get};
 use hyper::header::{Headers, Cookie};
-use hyper::server::{Handler, Server, Request, Response};
+use hyper::error::Error;
+use hyper::server::{Listening, Handler, Server, Request, Response};
 use hyper::uri::RequestUri::AbsolutePath;
 use crypto::digest::Digest;
 use crypto::hmac::Hmac;
@@ -40,7 +41,7 @@ impl Handler for Camo {
 }
 
 impl Camo {
-  pub fn serve(config: Config) {
+  pub fn serve(config: Config) -> Result<Listening, Error> {
     let ip   = Ipv4Addr::new(127, 0, 0, 1);
     let addr = SocketAddrV4::new(ip, config.port);
 
@@ -58,10 +59,10 @@ impl Camo {
       status: status
     };
 
-    Server::http(addr).unwrap().handle(camo).unwrap();
+    return Server::http(addr).unwrap().handle(camo);
   }
 
-  fn from_query_string(pairs: Vec<(String, String)>) -> Option<( String)> {
+  fn from_query_string(pairs: Vec<(String, String)>) -> Option<(String)> {
     return Some(pairs[0].clone().1);
   }
 
@@ -94,10 +95,6 @@ impl Camo {
 
       // TODO: check headers here
 
-      /* sample urls:
-        http://localhost:3333/b9f45c9f94e3b15fecae2bf9a8b497fc7280fd29/?url=http://example.com/octocat.jpg
-        http://localhost:3333/b9f45c9f94e3b15fecae2bf9a8b497fc7280fd29/687474703a2f2f6578616d706c652e636f6d2f6f63746f6361742e6a7067
-      */
       match dest_url {
         Some(url) => {
           let mut hmac = Hmac::new(Sha1::new(), self.config.shared_key.as_bytes());
@@ -129,5 +126,26 @@ impl Camo {
     headers.set_raw("X-Content-Type-Options", vec![b"nosniff".to_vec()]);
     headers.set_raw("Content-Security-Policy", vec![b"default-src 'none'; img-src data:; style-src 'unsafe-inline'".to_vec()]);
     headers.set_raw("Strict-Transport-Security", vec![b"max-age=31536000; includeSubDomains".to_vec()]);
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use Camo;
+
+  macro_rules! s(
+    ($e:expr) => {{ String::from($e) }}
+  );
+
+  #[test]
+  fn test_from_query_string() {
+    let pairs: Vec<(String, String)> = vec![ (s!("url"), s!("http://example.com/octocat.jpg")) ];
+    assert_eq!(Camo::from_query_string(pairs), Some(s!("http://example.com/octocat.jpg")));
+  }
+
+  #[test]
+  fn test_from_encoded_url() {
+    let path = [s!(""), s!("b9f45c9f94e3b15fecae2bf9a8b497fc7280fd29"), s!("687474703a2f2f6578616d706c652e636f6d2f6f63746f6361742e6a7067")];
+    assert_eq!(Camo::from_encoded_url(&path), Some(s!("http://example.com/octocat.jpg")));
   }
 }

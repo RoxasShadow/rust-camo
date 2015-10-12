@@ -30,3 +30,33 @@ impl Status {
     *total_connections.borrow_mut() += 1;
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use Status;
+
+  use std::cell::RefCell;
+  use std::sync::Mutex;
+
+  use time;
+
+  fn new_status() -> Status {
+    return Status {
+      current_connections: Mutex::new(RefCell::new(0)),
+      total_connections:   Mutex::new(RefCell::new(0)),
+      started_at:          time::now_utc()
+    };
+  }
+
+  #[test]
+  fn test_new_visitor() {
+    let status = new_status();
+    status.new_visitor();
+
+    let current_connections = status.current_connections.lock().unwrap();
+    let total_connections   = status.total_connections.lock().unwrap();
+
+    assert_eq!(*current_connections.borrow(), 1);
+    assert_eq!(*total_connections.borrow(),   1);
+  }
+}
