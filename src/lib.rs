@@ -13,8 +13,10 @@ pub mod macros;
 
 pub mod config;
 pub mod status;
+pub mod utils;
 pub mod camo;
 
 pub use config::Config;
 pub use status::Status;
+pub use utils::Utils;
 pub use camo::Camo;

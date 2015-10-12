@@ -1,18 +1,15 @@
 use ::Config;
 use ::Status;
+use ::Utils;
 
 use std::net::{SocketAddrV4, Ipv4Addr};
 use std::cell::RefCell;
 use std::sync::Mutex;
 
-use libc;
-use libc::pid_t;
-use rustc_serialize::hex::{ToHex, FromHex};
-use regex::Regex;
 use time;
+use rustc_serialize::hex::ToHex;
 use hyper::{Url, Get};
-use hyper::header::{Headers, Cookie, SetCookie};
-use cookie::Cookie as CookiePair;
+use hyper::header::{Headers, Cookie};
 use hyper::server::{Handler, Server, Request, Response};
 use hyper::uri::RequestUri::AbsolutePath;
 use crypto::digest::Digest;
@@ -27,7 +24,7 @@ pub struct Camo {
 
 impl Handler for Camo {
   fn handle(&self, mut req: Request, mut res: Response) {
-    self.default_security_headers(&mut res);
+    Camo::default_security_headers(&mut res);
 
     match req.uri.clone() {
       AbsolutePath(path) => match (&req.method, &path[..]) {
@@ -43,10 +40,6 @@ impl Handler for Camo {
 }
 
 impl Camo {
-  pub fn pid() -> pid_t {
-    unsafe { libc::getpid() }
-  }
-
   pub fn serve(config: Config) {
     let ip   = Ipv4Addr::new(127, 0, 0, 1);
     let addr = SocketAddrV4::new(ip, config.port);
@@ -58,7 +51,7 @@ impl Camo {
     };
 
     println!("SSL-Proxy running on {} with pid:{} version:{}",
-      config.port, Camo::pid(), config.version);
+      config.port, Utils::pid(), config.version);
 
     let camo = Camo {
       config: config,
@@ -68,35 +61,6 @@ impl Camo {
     Server::http(addr).unwrap().handle(camo).unwrap();
   }
 
-  fn clear_cookies(&self, headers: &mut Headers, cookies: Option<&Cookie>) {
-    match cookies {
-      Some(cookies) => {
-        for cookie in &mut cookies.iter() {
-          let mut cookie = CookiePair::new(cookie.name.clone(), "".to_owned());
-          cookie.expires = Some(time::empty_tm());
-          headers.set(SetCookie(vec![cookie]));
-        }
-      },
-
-      None => {}
-    }
-  }
-
-  pub fn hexdec(s: &str) -> Option<String> {
-    let length = s.len();
-
-    if length > 0 && length % 2 == 0 {
-      if !Regex::new(r"[^0-9a-f]").unwrap().is_match(s) {
-        return match s.from_hex() {
-          Ok(val) => String::from_utf8(val).ok(),
-          Err(_)  => None,
-        };
-      }
-    }
-
-    return None;
-  }
-
   fn from_query_string(pairs: Vec<(String, String)>) -> Option<( String)> {
     return Some(pairs[0].clone().1);
   }
@@ -104,7 +68,7 @@ impl Camo {
   fn from_encoded_url<'a>(path: &'a [String]) -> Option<String> {
     return if path.len() >= 3 {
       let encoded_url = &*path[2];
-      Camo::hexdec(encoded_url)
+      Utils::hexdec(encoded_url)
     }
     else {
       None
@@ -115,7 +79,7 @@ impl Camo {
     {
       let headers: &mut Headers    = res.headers_mut();
       let cookies: Option<&Cookie> = req.headers.get();
-      self.clear_cookies(headers, cookies);
+      Utils::clear_cookies(headers, cookies);
     }
 
     {
@@ -158,7 +122,7 @@ impl Camo {
     self.status.new_visitor();
   }
 
-  fn default_security_headers(&self, res: &mut Response) {
+  fn default_security_headers(res: &mut Response) {
     let headers: &mut Headers = res.headers_mut();
     headers.set_raw("X-Frame-Options", vec![b"deny".to_vec()]);
     headers.set_raw("X-XSS-Protection", vec![b"1; mode=block".to_vec()]);
