@@ -5,6 +5,8 @@ use time;
 use rustc_serialize::hex::FromHex;
 use hyper::header::{Headers, Cookie, SetCookie};
 use cookie::Cookie as CookiePair;
+use std::io::{self, Read};
+use hyper::client::Response as ClientResponse;
 
 pub struct Utils;
 
@@ -40,6 +42,12 @@ impl Utils {
 
       None => {}
     }
+  }
+
+  pub fn read_to_string(mut r: ClientResponse) -> io::Result<Vec<u8>> {
+    let mut v = Vec::new();
+    try!(r.read_to_end(&mut v));
+    return Ok(v);
   }
 }
 

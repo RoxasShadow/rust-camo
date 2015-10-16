@@ -5,7 +5,6 @@ use ::Utils;
 use std::net::{SocketAddrV4, Ipv4Addr};
 use std::cell::RefCell;
 use std::sync::Mutex;
-use std::io::{self, Read};
 
 use time;
 use rustc_serialize::hex::ToHex;
@@ -79,12 +78,6 @@ impl Camo {
     };
   }
 
-  fn read_to_string(mut r: ClientResponse) -> io::Result<Vec<u8>> {
-    let mut v = Vec::new();
-    try!(r.read_to_end(&mut v));
-    return Ok(v);
-  }
-
   fn process_url(&self, dest_url: String, mut res: &mut Response) -> Option<Vec<u8>> {
     let _url = Url::parse(&*dest_url);
     if _url.is_err() {
@@ -95,12 +88,12 @@ impl Camo {
 
     // TODO: newHeaders -> statusCode
 
-    let client = Client::new();
-    let mut client_res: ClientResponse = client.get(url)
+    let client_res: ClientResponse = Client::new()
+        .get(url)
         .header(Connection::close())
         .send().unwrap();
 
-    return Camo::read_to_string(client_res).ok();
+    return Utils::read_to_string(client_res).ok();
   }
 
   fn camo(&self, req: &Request, mut res: Response) {
