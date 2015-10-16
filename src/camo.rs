@@ -5,14 +5,17 @@ use ::Utils;
 use std::net::{SocketAddrV4, Ipv4Addr};
 use std::cell::RefCell;
 use std::sync::Mutex;
+use std::io::{self, Read};
 
 use time;
 use rustc_serialize::hex::ToHex;
-use hyper::{Url, Get};
-use hyper::header::{Headers, Cookie};
+use hyper::{Url, Get, Client};
+use hyper::client::Response as ClientResponse;
+use hyper::header::{Headers, Cookie, Connection};
 use hyper::error::Error;
 use hyper::server::{Listening, Handler, Server, Request, Response};
 use hyper::uri::RequestUri::AbsolutePath;
+use hyper::status::StatusCode;
 use crypto::digest::Digest;
 use crypto::hmac::Hmac;
 use crypto::sha1::Sha1;
@@ -25,7 +28,7 @@ pub struct Camo {
 
 impl Handler for Camo {
   fn handle(&self, mut req: Request, mut res: Response) {
-    Camo::default_security_headers(&mut res);
+    Camo::set_default_security_headers(&mut res);
 
     match req.uri.clone() {
       AbsolutePath(path) => match (&req.method, &path[..]) {
@@ -76,6 +79,30 @@ impl Camo {
     };
   }
 
+  fn read_to_string(mut r: ClientResponse) -> io::Result<Vec<u8>> {
+    let mut v = Vec::new();
+    try!(r.read_to_end(&mut v));
+    return Ok(v);
+  }
+
+  fn process_url(&self, dest_url: String, mut res: &mut Response) -> Option<Vec<u8>> {
+    let _url = Url::parse(&*dest_url);
+    if _url.is_err() {
+      return None;
+    }
+
+    let url = _url.unwrap();
+
+    // TODO: newHeaders -> statusCode
+
+    let client = Client::new();
+    let mut client_res: ClientResponse = client.get(url)
+        .header(Connection::close())
+        .send().unwrap();
+
+    return Camo::read_to_string(client_res).ok();
+  }
+
   fn camo(&self, req: &Request, mut res: Response) {
     {
       let headers: &mut Headers    = res.headers_mut();
@@ -103,14 +130,23 @@ impl Camo {
           let hmac_digest = hmac.result().code().to_hex();
 
           if hmac_digest == query_digest {
-            try_return!(res.send(b"yay"));
+            self.set_transfer_headers(req.headers.clone(), &mut res);
+            match self.process_url(url, &mut res) {
+              Some(s) => try_return!(res.send(&*s)),
+              None    => {
+                *res.status_mut() = StatusCode::NotFound;
+                try_return!(res.send(b"No host found"));
+              }
+            }
           }
           else {
             let s = format!("checksum mismatch {}:{}", hmac_digest, query_digest);
+            *res.status_mut() = StatusCode::NotFound;
             try_return!(res.send(s.as_bytes()));
           }
         }
         None => {
+          *res.status_mut() = StatusCode::NotFound;
           try_return!(res.send(b"No pathname provided on the server"));
         }
       }
@@ -119,7 +155,19 @@ impl Camo {
     self.status.new_visitor();
   }
 
-  fn default_security_headers(res: &mut Response) {
+  fn set_transfer_headers(&self, given_headers: Headers, res: &mut Response) {
+    let headers: &mut Headers = res.headers_mut();
+    headers.set_raw("Via", vec![self.config.user_agent.as_bytes().to_vec()]);
+    headers.set_raw("User-Agent", vec![self.config.user_agent.as_bytes().to_vec()]);
+
+    let accept = given_headers.get_raw("Accept");
+    headers.set_raw("Accept", accept.unwrap_or(&[vec![b"image/*"[0]]]).to_vec());
+
+    let accept_encoding = given_headers.get_raw("Accept-Encoding");
+    headers.set_raw("Accept-Encoding", accept_encoding.unwrap_or(&[vec![b"*"[0]]]).to_vec());
+  }
+
+  fn set_default_security_headers(res: &mut Response) {
     let headers: &mut Headers = res.headers_mut();
     headers.set_raw("X-Frame-Options", vec![b"deny".to_vec()]);
     headers.set_raw("X-XSS-Protection", vec![b"1; mode=block".to_vec()]);
