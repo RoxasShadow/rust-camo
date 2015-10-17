@@ -7,6 +7,7 @@ extern crate hyper;
 extern crate cookie;
 extern crate time;
 extern crate crypto;
+extern crate byteorder;
 
 #[macro_use]
 pub mod macros;

@@ -86,12 +86,25 @@ impl Camo {
 
     let url = _url.unwrap();
 
-    // TODO: newHeaders -> statusCode
-
     let client_res: ClientResponse = Client::new()
         .get(url)
         .header(Connection::close())
         .send().unwrap();
+
+    // TODO: handle StatusCode
+
+    let client_headers = client_res.headers.clone();
+
+    {
+      let content_length = client_headers.get_raw("content-length");
+      if content_length.is_some() {
+        if Utils::bytes_to_int(&*content_length.unwrap()[0]) > self.config.content_length_limit {
+          return None;
+        }
+      }
+    }
+
+    self.set_object_headers(client_headers, &mut res);
 
     return Utils::read_to_string(client_res).ok();
   }
@@ -113,7 +126,18 @@ impl Camo {
         None        => Camo::from_encoded_url(path),
       };
 
-      // TODO: check headers here
+      {
+        let headers = req.headers.clone();
+        let _via    = headers.get_raw("via");
+        if _via.is_some() {
+          let s = &*_via.unwrap()[0];
+          let via = String::from_utf8(vec![s[0]]);
+          if via.is_ok() && via.unwrap().contains(&self.config.user_agent) {
+            *res.status_mut() = StatusCode::NotFound;
+            try_return!(res.send(b"Requesting from self"));
+          }
+        }
+      }
 
       match dest_url {
         Some(url) => {
@@ -124,6 +148,7 @@ impl Camo {
 
           if hmac_digest == query_digest {
             self.set_transfer_headers(req.headers.clone(), &mut res);
+
             match self.process_url(url, &mut res) {
               Some(s) => try_return!(res.send(&*s)),
               None    => {
@@ -146,6 +171,25 @@ impl Camo {
     }
 
     self.status.new_visitor();
+  }
+
+  fn set_object_headers(&self, given_headers: Headers, res: &mut Response) {
+    let headers: &mut Headers = res.headers_mut();
+    headers.set_raw("Camo-Host", vec![self.config.hostname.as_bytes().to_vec()]);
+
+    use_header_if_present!(given_headers, headers, "content-type");
+    use_header_if_present!(given_headers, headers, "expires");
+    use_header_if_present!(given_headers, headers, "last-modified");
+    use_header_if_present!(given_headers, headers, "content-length");
+    use_header_if_present!(given_headers, headers, "content-encoding");
+
+    let cache_control = given_headers.get_raw("cache-control");
+    headers.set_raw("cache-control", cache_control.unwrap_or(&[vec![b"public, max-age=31536000"[0]]]).to_vec());
+
+    let timing_allow_origin = self.config.timing_allow_origin.clone();
+    if timing_allow_origin.is_some() {
+      headers.set_raw("Timing-Allow-Origin", vec![timing_allow_origin.unwrap().as_bytes().to_vec()]);
+    }
   }
 
   fn set_transfer_headers(&self, given_headers: Headers, res: &mut Response) {

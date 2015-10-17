@@ -1,3 +1,5 @@
+use std::io::Cursor;
+
 use libc;
 use libc::pid_t;
 use regex::Regex;
@@ -7,6 +9,7 @@ use hyper::header::{Headers, Cookie, SetCookie};
 use cookie::Cookie as CookiePair;
 use std::io::{self, Read};
 use hyper::client::Response as ClientResponse;
+use byteorder::{BigEndian, ReadBytesExt};
 
 pub struct Utils;
 
@@ -48,6 +51,11 @@ impl Utils {
     let mut v = Vec::new();
     try!(r.read_to_end(&mut v));
     return Ok(v);
+  }
+
+  pub fn bytes_to_int(bytes: &[u8]) -> u32 {
+    let mut buf = Cursor::new(&bytes[..]);
+    return buf.read_u32::<BigEndian>().unwrap();
   }
 }
 
