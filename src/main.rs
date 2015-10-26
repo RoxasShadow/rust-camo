@@ -12,7 +12,7 @@ fn main() {
     shared_key:           String::from("0x24FEEDFACEDEADBEEFCAFE"),
     hostname:             String::from("unknown"),
     timing_allow_origin:  None,
-    content_length_limit: 5242880
+    content_length_limit: 5_242_880
   };
 
   Camo::serve(config).unwrap();

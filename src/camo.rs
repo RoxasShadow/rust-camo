@@ -96,11 +96,18 @@ impl Camo {
     let client_headers = client_res.headers.clone();
 
     {
-      let content_length = client_headers.get_raw("content-length");
-      if content_length.is_some() {
-        if Utils::bytes_to_int(&*content_length.unwrap()[0]) > self.config.content_length_limit {
-          return None;
-        }
+      match client_headers.get_raw("content-length") {
+        Some(raw_content_length) => {
+          match Utils::bytes_to_int(&*raw_content_length[0]) {
+            Some(content_length) => {
+              if content_length > self.config.content_length_limit {
+                return None;
+              }
+            },
+            None => return None
+          }
+        },
+        None => return None
       }
     }
 

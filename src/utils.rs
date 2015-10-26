@@ -1,5 +1,3 @@
-use std::io::Cursor;
-
 use libc;
 use libc::pid_t;
 use regex::Regex;
@@ -9,7 +7,6 @@ use hyper::header::{Headers, Cookie, SetCookie};
 use cookie::Cookie as CookiePair;
 use std::io::{self, Read};
 use hyper::client::Response as ClientResponse;
-use byteorder::{BigEndian, ReadBytesExt};
 
 pub struct Utils;
 
@@ -53,9 +50,11 @@ impl Utils {
     return Ok(v);
   }
 
-  pub fn bytes_to_int(bytes: &[u8]) -> u32 {
-    let mut buf = Cursor::new(&bytes[..]);
-    return buf.read_u32::<BigEndian>().unwrap();
+  pub fn bytes_to_int(bytes: &[u8]) -> Option<u32> {
+    match String::from_utf8(bytes.iter().cloned().collect()) {
+      Ok(s)  => s.parse::<u32>().ok(),
+      Err(_) => None
+    }
   }
 }
 
@@ -68,5 +67,10 @@ mod tests {
     assert_eq!(Utils::hexdec("687474703a2f2f6578616d706c652e636f6d2f6f63746f6361742e6a7067"), Some(String::from("http://example.com/octocat.jpg")));
     assert_eq!(Utils::hexdec("lolwut"), None);
     assert_eq!(Utils::hexdec(""), None);
+  }
+
+  #[test]
+  fn test_bytes_to_int() {
+    assert_eq!(Utils::bytes_to_int(&[54, 53, 53, 55, 51]), Some(65573 as u32));
   }
 }
