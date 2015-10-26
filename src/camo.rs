@@ -84,34 +84,45 @@ impl Camo {
       return None;
     }
 
-    let url = _url.unwrap();
-
     let client_res: ClientResponse = Client::new()
-        .get(url)
-        .header(Connection::close())
-        .send().unwrap();
-
-    // TODO: handle StatusCode
-
-    let client_headers = client_res.headers.clone();
+      .get(_url.unwrap())
+      .header(Connection::close())
+      .send().unwrap();
 
     {
-      match client_headers.get_raw("content-length") {
-        Some(raw_content_length) => {
-          match Utils::bytes_to_int(&*raw_content_length[0]) {
-            Some(content_length) => {
-              if content_length > self.config.content_length_limit {
-                return None;
-              }
-            },
-            None => return None
-          }
-        },
-        None => return None
+      let client_headers = client_res.headers.clone();
+
+      {
+        match client_headers.get_raw("content-length") {
+          Some(raw_content_length) => {
+            match Utils::bytes_to_int(&*raw_content_length[0]) {
+              Some(content_length) => {
+                if content_length > self.config.content_length_limit {
+                  return None;
+                }
+              },
+              None => return None
+            }
+          },
+          None => return None
+        }
       }
+
+      self.set_object_headers(client_headers, &mut res);
     }
 
-    self.set_object_headers(client_headers, &mut res);
+    match client_res.status {
+      StatusCode::MovedPermanently | StatusCode::Found |
+      StatusCode::SeeOther         | StatusCode::TemporaryRedirect => {
+        // TODO
+      },
+      StatusCode::NotModified => {
+        // TODO
+      }
+      _ => {
+        println!("nn {:?}", client_res);
+      }
+    }
 
     return Utils::read_to_string(client_res).ok();
   }
